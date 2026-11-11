@@ -34,26 +34,16 @@ CALCULATOR_CHOICES = {
         ("Cement production", "Kiln energy and limestone calcination emissions.", "amber"),
         ("Steel production", "Steel output, furnace energy, and reducing-agent emissions.", "violet"),
     ),
-    "haber": (
+    "ammonia": (
         ("Natural gas (grey hydrogen)", "Fossil-based hydrogen; the starting factor is 10 kg CO2e/kg H2.", "blue"),
         ("Coal (high-carbon hydrogen)", "Coal gasification has a higher illustrative hydrogen factor.", "orange"),
         ("Renewable electricity (green hydrogen)", "Electrolysis powered by renewables; lifecycle emissions still vary.", "lime"),
-    ),
-    "ammonia": (
-        ("Natural gas reforming", "Illustrative direct and thermal factor: 2.00 t CO2e/t ammonia.", "orange"),
-        ("Coal gasification", "Illustrative direct and thermal factor: 3.50 t CO2e/t ammonia.", "red"),
-        ("Renewable hydrogen", "Illustrative direct and thermal factor: 0.15 t CO2e/t ammonia.", "rainbow"),
     ),
 }
 HYDROGEN_FACTORS = {
     "Natural gas (grey hydrogen)": 10.0,
     "Coal (high-carbon hydrogen)": 20.0,
     "Renewable electricity (green hydrogen)": 1.5,
-}
-AMMONIA_ROUTES = {
-    "Natural gas reforming": 2.0,
-    "Coal gasification": 3.5,
-    "Renewable hydrogen": 0.15,
 }
 INDUSTRIES = {
     "Sugarcane processing": {
@@ -327,7 +317,7 @@ def render_choice_cards(
             if st.button(
                 button_label,
                 key=f"{key_prefix}_{index}",
-                use_container_width=True,
+                width="stretch",
                 type="primary" if label == current_choice else "secondary",
             ):
                 st.session_state[state_key] = label
@@ -386,112 +376,52 @@ def render_result(
             st.markdown(f"- {suggestion}")
 
 
-if hasattr(st, "dialog"):
-    @st.dialog("A brighter way to understand emissions", width="large")
-    def welcome_dialog() -> None:
-        st.markdown(
-            "### Small calculations. Big-picture thinking."
-            "\n\nExplore what carbon emissions mean, then estimate emissions for "
-            "industrial activity and ammonia production. No account or setup needed."
-        )
-        st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
-        if st.button("Enter Carbon Compass", type="primary", use_container_width=True):
-            st.session_state.welcome_open = False
-            st.rerun()
-else:
-    def welcome_dialog() -> None:
-        st.markdown(
-            "### Small calculations. Big-picture thinking."
-            "\n\nExplore what carbon emissions mean, then estimate emissions for "
-            "industrial activity and ammonia production. No account or setup needed."
-        )
-        st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
-        if st.button("Enter Carbon Compass", type="primary", use_container_width=True):
-            st.session_state.welcome_open = False
-            st.rerun()
+@st.dialog("A brighter way to understand emissions", width="large")
+def welcome_dialog() -> None:
+    st.markdown(
+        "### Small calculations. Big-picture thinking."
+        "\n\nExplore what carbon emissions mean, then estimate emissions for "
+        "industrial activity and ammonia production. No account or setup needed."
+    )
+    st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
+    if st.button("Enter Carbon Compass", type="primary", width="stretch"):
+        st.session_state.welcome_open = False
+        st.rerun()
 
 
-if hasattr(st, "dialog"):
-    @st.dialog("Calculate CO2 emissions by category", width="large")
-    def category_dialog() -> None:
-        st.write("Choose a sector to open its calculator.")
-        left, middle, right = st.columns(3)
-        options = [
-            (
-                left,
-                "Industry-based emissions",
-                "industry",
-                "red",
-                "Estimate factory energy and process emissions across five industries.",
-            ),
-            (
-                middle,
-                "Haber process",
-                "haber",
-                "blue",
-                "Explore how hydrogen production and process electricity affect ammonia.",
-            ),
-            (
-                right,
-                "Ammonia synthesis",
-                "ammonia",
-                "rainbow",
-                "Compare production routes and enter plant-specific energy factors.",
-            ),
-        ]
-        for column, label, calculator, accent, description in options:
-            with column:
-                st.markdown(
-                    f'<div class="neon-card neon-card--{accent}">'
-                    f"<h3>{label}</h3><p>{description}</p></div>",
-                    unsafe_allow_html=True,
-                )
-                if st.button(label, key=f"choose_{calculator}", use_container_width=True):
-                    st.session_state.page = "calculator_options"
-                    st.session_state.calculator = calculator
-                    st.session_state.category_dialog_open = False
-                    st.rerun()
-        st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
-else:
-    def category_dialog() -> None:
-        st.write("Choose a sector to open its calculator.")
-        left, middle, right = st.columns(3)
-        options = [
-            (
-                left,
-                "Industry-based emissions",
-                "industry",
-                "red",
-                "Estimate factory energy and process emissions across five industries.",
-            ),
-            (
-                middle,
-                "Haber process",
-                "haber",
-                "blue",
-                "Explore how hydrogen production and process electricity affect ammonia.",
-            ),
-            (
-                right,
-                "Ammonia synthesis",
-                "ammonia",
-                "rainbow",
-                "Compare production routes and enter plant-specific energy factors.",
-            ),
-        ]
-        for column, label, calculator, accent, description in options:
-            with column:
-                st.markdown(
-                    f'<div class="neon-card neon-card--{accent}">'
-                    f"<h3>{label}</h3><p>{description}</p></div>",
-                    unsafe_allow_html=True,
-                )
-                if st.button(label, key=f"choose_{calculator}", use_container_width=True):
-                    st.session_state.page = "calculator_options"
-                    st.session_state.calculator = calculator
-                    st.session_state.category_dialog_open = False
-                    st.rerun()
-        st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
+@st.dialog("Calculate CO2 emissions by category", width="large")
+def category_dialog() -> None:
+    st.write("Choose a sector to open its calculator.")
+    left, right = st.columns(2)
+    options = [
+        (
+            left,
+            "Industry-based emissions",
+            "industry",
+            "red",
+            "Estimate factory energy and process emissions across five industries.",
+        ),
+        (
+            right,
+            "Ammonia plant emissions",
+            "ammonia",
+            "rainbow",
+            "Combine hydrogen pathway emissions with electricity, onsite fuel, and other direct plant emissions.",
+        ),
+    ]
+    for column, label, calculator, accent, description in options:
+        with column:
+            st.markdown(
+                f'<div class="neon-card neon-card--{accent}">'
+                f"<h3>{label}</h3><p>{description}</p></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button(label, key=f"choose_{calculator}", width="stretch"):
+                st.session_state.page = "calculator_options"
+                st.session_state.calculator = calculator
+                st.session_state.category_dialog_open = False
+                st.rerun()
+    st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
 
 
 if "page" not in st.session_state:
@@ -504,10 +434,19 @@ if "calculator" not in st.session_state:
     st.session_state.calculator = "industry"
 if "industry_choice" not in st.session_state:
     st.session_state.industry_choice = next(iter(INDUSTRIES))
-if "haber_route" not in st.session_state:
-    st.session_state.haber_route = next(iter(HYDROGEN_FACTORS))
-if "ammonia_route" not in st.session_state:
-    st.session_state.ammonia_route = next(iter(AMMONIA_ROUTES))
+legacy_route_map = {
+    "Natural gas reforming": "Natural gas (grey hydrogen)",
+    "Coal gasification": "Coal (high-carbon hydrogen)",
+    "Renewable hydrogen": "Renewable electricity (green hydrogen)",
+}
+route = st.session_state.get("ammonia_route")
+if route not in HYDROGEN_FACTORS:
+    route = st.session_state.get("haber_route") or legacy_route_map.get(route)
+st.session_state.ammonia_route = (
+    route if route in HYDROGEN_FACTORS else next(iter(HYDROGEN_FACTORS))
+)
+if st.session_state.get("calculator") == "haber":
+    st.session_state.calculator = "ammonia"
 
 if st.session_state.welcome_open:
     welcome_dialog()
@@ -542,7 +481,7 @@ if st.session_state.page == "home":
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Explore the impact", key="learn_button", use_container_width=True):
+        if st.button("Explore the impact", key="learn_button", width="stretch"):
             set_page("learn")
             st.rerun()
     with category_column:
@@ -557,7 +496,7 @@ if st.session_state.page == "home":
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Choose a calculator", key="calculate_button", type="primary", use_container_width=True):
+        if st.button("Choose a calculator", key="calculate_button", type="primary", width="stretch"):
             st.session_state.category_dialog_open = True
             st.rerun()
     with personal_column:
@@ -575,7 +514,7 @@ if st.session_state.page == "home":
         if st.button(
             "Calculate my footprint",
             key="personal_calculate_button",
-            use_container_width=True,
+            width="stretch",
         ):
             set_page("personal")
             st.rerun()
@@ -919,7 +858,7 @@ elif st.session_state.page == "personal":
         submitted = st.form_submit_button(
             "Estimate my annual footprint",
             type="primary",
-            use_container_width=True,
+            width="stretch",
         )
 
     if submitted:
@@ -1067,15 +1006,9 @@ elif st.session_state.page == "calculator_options":
             "industry_choice",
             "industry_option",
         ),
-        "haber": (
-            "Choose a hydrogen route",
-            "Select a hydrogen production route to open the Haber calculator on the next page.",
-            "haber_route",
-            "haber_route_option",
-        ),
         "ammonia": (
-            "Choose an ammonia production route",
-            "Select a production route to open its calculator on the next page.",
+            "Choose a hydrogen pathway",
+            "Select the route used to supply hydrogen to the ammonia plant.",
             "ammonia_route",
             "ammonia_route_option",
         ),
@@ -1187,92 +1120,25 @@ elif st.session_state.page == "calculator":
             "averages. They may not match your product mix, geography, or reporting boundary."
         )
 
-    elif calculator == "haber":
-        st.markdown('<div class="eyebrow">Sector calculator · 02</div>', unsafe_allow_html=True)
-        st.title("Haber process")
-        st.write(
-            "Estimate the emissions associated with hydrogen feedstock and electricity "
-            f"used to make ammonia through the Haber-Bosch process. Selected route: **{st.session_state.haber_route}**."
-        )
-        st.latex(
-            r"\text{Annual CO2e} = "
-            r"\frac{\text{NH3 tonnes} \times \text{H2 kg/t} \times \text{H2 factor kg CO2e/kg}}{1000}"
-            r" + \frac{\text{NH3 tonnes} \times \text{electricity kWh/t} \times \text{grid factor kg/kWh}}{1000}"
-        )
-        route = st.session_state.haber_route
-        with st.form("haber_form"):
-            production = st.number_input(
-                "Ammonia production (tonnes per year)",
-                min_value=0.01,
-                value=1000.0,
-                step=100.0,
-                key="haber_production",
-            )
-            hydrogen = st.number_input(
-                "Hydrogen used (kg per tonne of ammonia)",
-                min_value=0.0,
-                value=180.0,
-                step=5.0,
-                key="haber_hydrogen",
-            )
-            electricity = st.number_input(
-                "Process electricity (kWh per tonne of ammonia)",
-                min_value=0.0,
-                value=900.0,
-                step=50.0,
-                key="haber_electricity",
-            )
-            grid_factor = st.number_input(
-                "Electricity factor (kg CO2e per kWh)",
-                min_value=0.0,
-                value=0.40,
-                step=0.05,
-                format="%.3f",
-                key="haber_grid_factor",
-            )
-            submitted = st.form_submit_button("Calculate Haber process emissions", type="primary")
-        if submitted:
-            total = production * (
-                hydrogen * HYDROGEN_FACTORS[route] / 1000
-                + electricity * grid_factor / 1000
-            )
-            st.session_state.haber_result = (total, total / production, route)
-        if "haber_result" in st.session_state:
-            total, intensity, result_route = st.session_state.haber_result
-            if result_route == route:
-                render_result(
-                    total,
-                    intensity,
-                    2.4,
-                    "t CO2e / t ammonia",
-                    (
-                        "Switch to lower-carbon hydrogen, especially renewable-powered electrolysis.",
-                        "Improve catalyst performance and recover heat from the synthesis loop.",
-                        "Use a location-specific electricity factor and verify hydrogen lifecycle data.",
-                    ),
-                )
-            else:
-                st.caption("Submit the form to calculate results for the newly selected hydrogen route.")
-        st.caption(
-            "The 2.4 t CO2e/t ammonia reference is an indicative natural-gas-based screening value. "
-            "Hydrogen pathway factors vary by plant, methane leakage, and electricity source."
-        )
-
     else:
-        st.markdown('<div class="eyebrow">Sector calculator · 03</div>', unsafe_allow_html=True)
-        st.title("Ammonia synthesis")
+        st.markdown('<div class="eyebrow">Sector calculator · 02</div>', unsafe_allow_html=True)
+        st.title("Ammonia plant emissions")
+        route = st.session_state.ammonia_route
         st.write(
-            "Estimate plant-level emissions from the selected production route, direct and "
-            f"thermal emissions intensity, and purchased electricity. Selected route: **{st.session_state.ammonia_route}**."
+            "The Haber-Bosch process is the ammonia-synthesis step, not a separate plant "
+            "footprint. This calculator combines hydrogen pathway emissions with the "
+            f"ammonia plant's operations. Selected hydrogen pathway: **{route}**."
         )
         st.latex(
-            r"\text{Annual CO2e} = \text{NH3 tonnes} \times "
-            r"\left(\text{route CO2e/t} + \text{electricity MWh/t} \times \text{grid factor t/MWh}\right)"
+            r"\text{Annual CO2e} = \text{NH3 tonnes} \times \left("
+            r"\frac{\text{H2 kg/t} \times \text{H2 factor kg CO2e/kg}}{1000}"
+            r" + \text{electricity MWh/t} \times \text{grid factor t/MWh}"
+            r" + \text{onsite fuel GJ/t} \times \text{fuel factor t/GJ}"
+            r" + \text{other direct CO2e/t}\right)"
         )
-        route = st.session_state.ammonia_route
         st.caption(
-            f"Illustrative route starting factor: {AMMONIA_ROUTES[route]:.2f} t CO2e/t ammonia "
-            "(direct and thermal emissions; electricity is entered separately)."
+            f"The selected pathway starts with an illustrative factor of {HYDROGEN_FACTORS[route]:.1f} "
+            "kg CO2e/kg H2. It is editable below; replace it with a supplier-specific lifecycle factor when available."
         )
         with st.form("ammonia_form"):
             production = st.number_input(
@@ -1282,18 +1148,25 @@ elif st.session_state.page == "calculator":
                 step=100.0,
                 key="ammonia_production",
             )
-            direct_factor = st.number_input(
-                "Direct and thermal emissions (t CO2e per tonne ammonia)",
+            hydrogen = st.number_input(
+                "Hydrogen used (kg per tonne of ammonia)",
                 min_value=0.0,
-                value=AMMONIA_ROUTES[route],
-                step=0.1,
+                value=180.0,
+                step=5.0,
+                key="ammonia_hydrogen",
+            )
+            hydrogen_factor = st.number_input(
+                "Hydrogen pathway factor (kg CO2e per kg H2)",
+                min_value=0.0,
+                value=HYDROGEN_FACTORS[route],
+                step=0.5,
                 format="%.2f",
-                key=f"ammonia_direct_{route}",
+                key=f"ammonia_hydrogen_factor_{route}",
             )
             electricity = st.number_input(
                 "Purchased electricity (MWh per tonne ammonia)",
                 min_value=0.0,
-                value=0.6,
+                value=0.9,
                 step=0.1,
                 key="ammonia_electricity",
             )
@@ -1305,9 +1178,37 @@ elif st.session_state.page == "calculator":
                 format="%.3f",
                 key="ammonia_grid_factor",
             )
-            submitted = st.form_submit_button("Calculate synthesis emissions", type="primary")
+            onsite_fuel = st.number_input(
+                "Onsite fuel used by the ammonia plant (GJ per tonne ammonia)",
+                min_value=0.0,
+                value=0.0,
+                step=0.5,
+                key="ammonia_onsite_fuel",
+            )
+            fuel_factor = st.number_input(
+                "Onsite fuel emissions factor (t CO2e per GJ)",
+                min_value=0.0,
+                value=FUEL_TCO2_PER_GJ,
+                step=0.005,
+                format="%.4f",
+                key="ammonia_fuel_factor",
+            )
+            process = st.number_input(
+                "Other direct process emissions (t CO2e per tonne ammonia)",
+                min_value=0.0,
+                value=0.0,
+                step=0.05,
+                format="%.3f",
+                key="ammonia_process",
+            )
+            submitted = st.form_submit_button("Calculate ammonia plant emissions", type="primary")
         if submitted:
-            intensity = direct_factor + electricity * grid_factor
+            intensity = (
+                hydrogen * hydrogen_factor / 1000
+                + electricity * grid_factor
+                + onsite_fuel * fuel_factor
+                + process
+            )
             total = production * intensity
             st.session_state.ammonia_result = (total, intensity, route)
         if "ammonia_result" in st.session_state:
@@ -1319,16 +1220,18 @@ elif st.session_state.page == "calculator":
                     2.4,
                     "t CO2e / t ammonia",
                     (
-                        "Replace fossil hydrogen and process heat with renewable alternatives.",
-                        "Improve heat integration and reduce electricity demand per tonne.",
-                        "Track upstream fuel emissions and avoid double-counting electricity.",
+                        "Switch to renewable-powered hydrogen where its lifecycle factor is demonstrably lower.",
+                        "Improve heat integration and replace onsite fossil fuel with low-carbon heat.",
+                        "Reduce electricity use and procure lower-carbon power; verify supplier-specific factors.",
                     ),
                 )
             else:
-                st.caption("Submit the form to calculate results for the newly selected production route.")
+                st.caption("Submit the form to calculate results for the newly selected hydrogen pathway.")
         st.caption(
-            "The 2.4 t CO2e/t ammonia reference is an indicative screening value. Route factors "
-            "are editable estimates; use plant-specific lifecycle and location-based data for reporting."
+            "The 2.4 t CO2e/t ammonia reference is an indicative screening benchmark, not an official average. "
+            "The selected hydrogen factor includes its pathway emissions; do not enter those same emissions "
+            "again as onsite fuel or other direct emissions. Enter onsite fuel only for the ammonia plant, "
+            "excluding hydrogen production. Use plant-specific lifecycle and location-based data for reporting."
         )
 
 st.markdown(
