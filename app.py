@@ -327,7 +327,7 @@ def render_choice_cards(
             if st.button(
                 button_label,
                 key=f"{key_prefix}_{index}",
-                width="stretch",
+                use_container_width=True,
                 type="primary" if label == current_choice else "secondary",
             ):
                 st.session_state[state_key] = label
@@ -386,59 +386,112 @@ def render_result(
             st.markdown(f"- {suggestion}")
 
 
-@st.dialog("A brighter way to understand emissions", width="large")
-def welcome_dialog() -> None:
-    st.markdown(
-        "### Small calculations. Big-picture thinking."
-        "\n\nExplore what carbon emissions mean, then estimate emissions for "
-        "industrial activity and ammonia production. No account or setup needed."
-    )
-    st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
-    if st.button("Enter Carbon Compass", type="primary", width="stretch"):
-        st.session_state.welcome_open = False
-        st.rerun()
+if hasattr(st, "dialog"):
+    @st.dialog("A brighter way to understand emissions", width="large")
+    def welcome_dialog() -> None:
+        st.markdown(
+            "### Small calculations. Big-picture thinking."
+            "\n\nExplore what carbon emissions mean, then estimate emissions for "
+            "industrial activity and ammonia production. No account or setup needed."
+        )
+        st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
+        if st.button("Enter Carbon Compass", type="primary", use_container_width=True):
+            st.session_state.welcome_open = False
+            st.rerun()
+else:
+    def welcome_dialog() -> None:
+        st.markdown(
+            "### Small calculations. Big-picture thinking."
+            "\n\nExplore what carbon emissions mean, then estimate emissions for "
+            "industrial activity and ammonia production. No account or setup needed."
+        )
+        st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
+        if st.button("Enter Carbon Compass", type="primary", use_container_width=True):
+            st.session_state.welcome_open = False
+            st.rerun()
 
 
-@st.dialog("Calculate CO2 emissions by category", width="large")
-def category_dialog() -> None:
-    st.write("Choose a sector to open its calculator.")
-    left, middle, right = st.columns(3)
-    options = [
-        (
-            left,
-            "Industry-based emissions",
-            "industry",
-            "red",
-            "Estimate factory energy and process emissions across five industries.",
-        ),
-        (
-            middle,
-            "Haber process",
-            "haber",
-            "blue",
-            "Explore how hydrogen production and process electricity affect ammonia.",
-        ),
-        (
-            right,
-            "Ammonia synthesis",
-            "ammonia",
-            "rainbow",
-            "Compare production routes and enter plant-specific energy factors.",
-        ),
-    ]
-    for column, label, calculator, accent, description in options:
-        with column:
-            st.markdown(
-                f'<div class="neon-card neon-card--{accent}">'
-                f"<h3>{label}</h3><p>{description}</p></div>",
-                unsafe_allow_html=True,
-            )
-            if st.button(label, key=f"choose_{calculator}", width="stretch"):
-                st.session_state.page = "calculator_options"
-                st.session_state.calculator = calculator
-                st.session_state.category_dialog_open = False
-                st.rerun()
-    st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
+if hasattr(st, "dialog"):
+    @st.dialog("Calculate CO2 emissions by category", width="large")
+    def category_dialog() -> None:
+        st.write("Choose a sector to open its calculator.")
+        left, middle, right = st.columns(3)
+        options = [
+            (
+                left,
+                "Industry-based emissions",
+                "industry",
+                "red",
+                "Estimate factory energy and process emissions across five industries.",
+            ),
+            (
+                middle,
+                "Haber process",
+                "haber",
+                "blue",
+                "Explore how hydrogen production and process electricity affect ammonia.",
+            ),
+            (
+                right,
+                "Ammonia synthesis",
+                "ammonia",
+                "rainbow",
+                "Compare production routes and enter plant-specific energy factors.",
+            ),
+        ]
+        for column, label, calculator, accent, description in options:
+            with column:
+                st.markdown(
+                    f'<div class="neon-card neon-card--{accent}">'
+                    f"<h3>{label}</h3><p>{description}</p></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(label, key=f"choose_{calculator}", use_container_width=True):
+                    st.session_state.page = "calculator_options"
+                    st.session_state.calculator = calculator
+                    st.session_state.category_dialog_open = False
+                    st.rerun()
+        st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
+else:
+    def category_dialog() -> None:
+        st.write("Choose a sector to open its calculator.")
+        left, middle, right = st.columns(3)
+        options = [
+            (
+                left,
+                "Industry-based emissions",
+                "industry",
+                "red",
+                "Estimate factory energy and process emissions across five industries.",
+            ),
+            (
+                middle,
+                "Haber process",
+                "haber",
+                "blue",
+                "Explore how hydrogen production and process electricity affect ammonia.",
+            ),
+            (
+                right,
+                "Ammonia synthesis",
+                "ammonia",
+                "rainbow",
+                "Compare production routes and enter plant-specific energy factors.",
+            ),
+        ]
+        for column, label, calculator, accent, description in options:
+            with column:
+                st.markdown(
+                    f'<div class="neon-card neon-card--{accent}">'
+                    f"<h3>{label}</h3><p>{description}</p></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(label, key=f"choose_{calculator}", use_container_width=True):
+                    st.session_state.page = "calculator_options"
+                    st.session_state.calculator = calculator
+                    st.session_state.category_dialog_open = False
+                    st.rerun()
+        st.caption("Each calculator opens with its own inputs, formula, estimate, and reduction ideas.")
 
 
 if "page" not in st.session_state:
@@ -489,7 +542,7 @@ if st.session_state.page == "home":
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Explore the impact", key="learn_button", width="stretch"):
+        if st.button("Explore the impact", key="learn_button", use_container_width=True):
             set_page("learn")
             st.rerun()
     with category_column:
@@ -504,7 +557,7 @@ if st.session_state.page == "home":
             """,
             unsafe_allow_html=True,
         )
-        if st.button("Choose a calculator", key="calculate_button", type="primary", width="stretch"):
+        if st.button("Choose a calculator", key="calculate_button", type="primary", use_container_width=True):
             st.session_state.category_dialog_open = True
             st.rerun()
     with personal_column:
@@ -522,7 +575,7 @@ if st.session_state.page == "home":
         if st.button(
             "Calculate my footprint",
             key="personal_calculate_button",
-            width="stretch",
+            use_container_width=True,
         ):
             set_page("personal")
             st.rerun()
@@ -866,7 +919,7 @@ elif st.session_state.page == "personal":
         submitted = st.form_submit_button(
             "Estimate my annual footprint",
             type="primary",
-            width="stretch",
+            use_container_width=True,
         )
 
     if submitted:
