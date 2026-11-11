@@ -11,6 +11,13 @@ st.set_page_config(
 
 GRID_TCO2_PER_MWH = 0.40
 FUEL_TCO2_PER_GJ = 0.0561
+AGRICULTURE_DIESEL_KG_PER_LITRE = 2.68
+AGRICULTURE_SOIL_KG_PER_KG_N = 4.3
+AGRICULTURE_METHANE_GWP100 = 27.2
+RICE_METHANE_KG_PER_HA_DAY = 1.19
+RICE_FLOODED_DAYS_PER_SEASON = 120
+CATTLE_ENTERIC_METHANE_KG_PER_HEAD_YEAR = 60.0
+CATTLE_MANURE_METHANE_KG_PER_HEAD_YEAR = 5.0
 PERSONAL_REFERENCE_TCO2 = 2.19
 PERSONAL_REFERENCE_YEAR = 2025
 PERSONAL_GRID_KG_PER_KWH = 0.716
@@ -33,6 +40,12 @@ CALCULATOR_CHOICES = {
         ("Oil refining", "Crude throughput, refinery fuel, flaring, and process sources.", "orange"),
         ("Cement production", "Kiln energy and limestone calcination emissions.", "amber"),
         ("Steel production", "Steel output, furnace energy, and reducing-agent emissions.", "violet"),
+    ),
+    "agriculture": (
+        ("Crop farming", "Crop output, nitrogen fertilizer, diesel, and purchased electricity.", "lime"),
+        ("Rice cultivation", "Rice area, growing season, methane, fertilizer, and farm energy.", "blue"),
+        ("Dairy & cattle", "Herd size, enteric and manure methane, and milk or livestock output.", "orange"),
+        ("Poultry farming", "Poultry output, manure emissions, and farm energy.", "rainbow"),
     ),
     "ammonia": (
         ("Natural gas (grey hydrogen)", "Fossil-based hydrogen; the starting factor is 10 kg CO2e/kg H2.", "blue"),
@@ -326,51 +339,133 @@ def render_choice_cards(
     return current_choice
 
 
+def render_contribution_chart(
+    contributions: tuple[tuple[str, float], ...],
+    key: str = "emissions_contribution_pie",
+) -> None:
+    positive_contributions = [
+        (label, max(0.0, value)) for label, value in contributions if value > 0
+    ]
+    total = sum(value for _, value in positive_contributions)
+    if total <= 0:
+        st.info("Enter activity with non-zero emissions to see the input contribution chart.")
+        return
+
+    chart_data = pd.DataFrame(
+        [
+            {
+                "Input": label,
+                "Emissions (t CO2e)": value,
+                "Share": value / total * 100,
+                "Share label": f"{value / total * 100:.1f}%",
+            }
+            for label, value in positive_contributions
+        ]
+    )
+    chart_spec = {
+        "layer": [
+            {
+                "mark": {
+                    "type": "arc",
+                    "outerRadius": 112,
+                    "stroke": "#070a0d",
+                    "strokeWidth": 2,
+                },
+                "encoding": {
+                    "theta": {
+                        "field": "Emissions (t CO2e)",
+                        "type": "quantitative",
+                        "stack": True,
+                    },
+                    "color": {
+                        "field": "Input",
+                        "type": "nominal",
+                        "scale": {"scheme": "rainbow"},
+                        "legend": {"title": "Emissions source"},
+                    },
+                    "tooltip": [
+                        {"field": "Input", "type": "nominal"},
+                        {
+                            "field": "Emissions (t CO2e)",
+                            "type": "quantitative",
+                            "format": ".3f",
+                        },
+                        {"field": "Share", "type": "quantitative", "format": ".1f"},
+                    ],
+                },
+            },
+            {
+                "mark": {
+                    "type": "text",
+                    "radius": 138,
+                    "fontSize": 12,
+                    "fontWeight": "bold",
+                    "color": "#ffffff",
+                },
+                "encoding": {
+                    "theta": {
+                        "field": "Emissions (t CO2e)",
+                        "type": "quantitative",
+                        "stack": True,
+                    },
+                    "text": {"field": "Share label", "type": "nominal"},
+                },
+            },
+        ],
+        "view": {"stroke": None},
+    }
+    st.subheader("Share of emissions by input")
+    st.vega_lite_chart(chart_data, chart_spec, width="stretch", height=340, key=key)
+
+
 def render_result(
     total_tonnes: float,
     intensity: float,
-    benchmark: float,
+    benchmark: float | None,
     benchmark_label: str,
     suggestions: tuple[str, ...],
+    contributions: tuple[tuple[str, float], ...],
 ) -> None:
-    if benchmark <= 0:
+    if benchmark is not None and benchmark <= 0:
         st.error("The reference intensity must be greater than zero to calculate a comparison.")
         return
-    difference = ((intensity / benchmark) - 1) * 100
     with st.container(border=True):
         st.subheader("Your estimate")
-        metric_cols = st.columns(3)
+        metric_cols = st.columns(3 if benchmark is not None else 2)
         metric_cols[0].metric("Estimated emissions", f"{total_tonnes:,.2f} t CO2e / year")
         metric_cols[1].metric("Emissions intensity", f"{intensity:,.3f} {benchmark_label}")
-        if difference > 0.05:
-            comparison = f"{difference:.1f}% above reference"
-        elif difference < -0.05:
-            comparison = f"{abs(difference):.1f}% below reference"
-        else:
-            comparison = "At the reference level"
-        metric_cols[2].metric("Comparison", comparison)
+        if benchmark is not None:
+            difference = ((intensity / benchmark) - 1) * 100
+            if difference > 0.05:
+                comparison = f"{difference:.1f}% above reference"
+            elif difference < -0.05:
+                comparison = f"{abs(difference):.1f}% below reference"
+            else:
+                comparison = "At the reference level"
+            metric_cols[2].metric("Comparison", comparison)
 
-        st.markdown(
-            f"""
-            <div class="result-panel">
-              <div class="result-label">Reference intensity</div>
-              <div class="result-value">{benchmark:.3f} {benchmark_label}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        if difference > 0.05:
-            st.warning(
-                f"This estimate is **{difference:.1f}% higher** than the reference intensity. "
-                "The reference is a comparison point, not a regulatory limit."
+            st.markdown(
+                f"""
+                <div class="result-panel">
+                  <div class="result-label">Reference intensity</div>
+                  <div class="result-value">{benchmark:.3f} {benchmark_label}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-        elif difference < -0.05:
-            st.success(
-                f"This estimate is **{abs(difference):.1f}% below** the reference intensity. "
-                "Keep tracking actual production and energy data."
-            )
-        else:
-            st.info("This estimate is at the reference intensity.")
+            if difference > 0.05:
+                st.warning(
+                    f"This estimate is **{difference:.1f}% higher** than the reference intensity. "
+                    "The reference is a comparison point, not a regulatory limit."
+                )
+            elif difference < -0.05:
+                st.success(
+                    f"This estimate is **{abs(difference):.1f}% below** the reference intensity. "
+                    "Keep tracking actual production and energy data."
+                )
+            else:
+                st.info("This estimate is at the reference intensity.")
+        render_contribution_chart(contributions)
         st.markdown("**Practical ways to reduce emissions**")
         for suggestion in suggestions:
             st.markdown(f"- {suggestion}")
@@ -381,7 +476,7 @@ def welcome_dialog() -> None:
     st.markdown(
         "### Small calculations. Big-picture thinking."
         "\n\nExplore what carbon emissions mean, then estimate emissions for "
-        "industrial activity and ammonia production. No account or setup needed."
+        "industry, crop farming, and ammonia production. No account or setup needed."
     )
     st.caption("Estimates are learning and screening tools; use verified local factors for reporting.")
     if st.button("Enter Carbon Compass", type="primary", width="stretch"):
@@ -392,7 +487,7 @@ def welcome_dialog() -> None:
 @st.dialog("Calculate CO2 emissions by category", width="large")
 def category_dialog() -> None:
     st.write("Choose a sector to open its calculator.")
-    left, right = st.columns(2)
+    left, middle, right = st.columns(3)
     options = [
         (
             left,
@@ -400,6 +495,13 @@ def category_dialog() -> None:
             "industry",
             "red",
             "Estimate factory energy and process emissions across five industries.",
+        ),
+        (
+            middle,
+            "Crop agriculture",
+            "agriculture",
+            "lime",
+            "Estimate field fertilizer, farm diesel, and purchased-electricity emissions.",
         ),
         (
             right,
@@ -434,6 +536,10 @@ if "calculator" not in st.session_state:
     st.session_state.calculator = "industry"
 if "industry_choice" not in st.session_state:
     st.session_state.industry_choice = next(iter(INDUSTRIES))
+if st.session_state.get("agriculture_choice") not in {
+    choice[0] for choice in CALCULATOR_CHOICES["agriculture"]
+}:
+    st.session_state.agriculture_choice = CALCULATOR_CHOICES["agriculture"][0][0]
 legacy_route_map = {
     "Natural gas reforming": "Natural gas (grey hydrogen)",
     "Coal gasification": "Coal (high-carbon hydrogen)",
@@ -490,8 +596,8 @@ if st.session_state.page == "home":
             <div class="neon-card neon-card--blue">
               <div class="card-kicker">02 · Calculate</div>
               <h3>Calculate emissions by category</h3>
-              <p>Estimate emissions for different industries, the Haber process,
-              or ammonia synthesis—with formulas and clear reference comparisons.</p>
+                  <p>Estimate emissions from industry, crop agriculture, and ammonia plants
+                  with sector-specific inputs, formulas, and reduction ideas.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -735,6 +841,11 @@ elif st.session_state.page == "learn":
             "https://www.ipcc.ch/report/ar6/wg3/",
         ),
         (
+            "IPCC agricultural emissions guidance",
+            "Methods for estimating emissions from agriculture, forestry, and land use.",
+            "https://www.ipcc-nggip.iges.or.jp/public/2019rf/vol4.html",
+        ),
+        (
             "IEA ammonia technology roadmap",
             "Technology options and emissions pathways for ammonia production.",
             "https://www.iea.org/reports/ammonia-technology-roadmap",
@@ -862,30 +973,39 @@ elif st.session_state.page == "personal":
         )
 
     if submitted:
-        travel = (
-            petrol_litres * PERSONAL_PETROL_KG_PER_LITRE
-            + diesel_litres * PERSONAL_DIESEL_KG_PER_LITRE
-            + cng_kg * PERSONAL_CNG_KG_PER_KG
-            + transit_km * PERSONAL_TRANSIT_KG_PER_KM
-        ) / 1000
-        home = (
-            household_electricity * PERSONAL_GRID_KG_PER_KWH / 1000
-            + household_lpg_cylinders * PERSONAL_LPG_TCO2_PER_CYLINDER
-        ) / household_members
-        flights = (
-            domestic_flight_segments * PERSONAL_DOMESTIC_FLIGHT_TONNES
-            + international_flight_segments * PERSONAL_INTERNATIONAL_FLIGHT_TONNES
-        )
+        input_totals = {
+            "Petrol": petrol_litres * PERSONAL_PETROL_KG_PER_LITRE / 1000,
+            "Diesel": diesel_litres * PERSONAL_DIESEL_KG_PER_LITRE / 1000,
+            "CNG": cng_kg * PERSONAL_CNG_KG_PER_KG / 1000,
+            "Public transport": transit_km * PERSONAL_TRANSIT_KG_PER_KM / 1000,
+            "Household electricity": (
+                household_electricity * PERSONAL_GRID_KG_PER_KWH / 1000 / household_members
+            ),
+            "LPG": (
+                household_lpg_cylinders * PERSONAL_LPG_TCO2_PER_CYLINDER / household_members
+            ),
+            "Domestic flights": (
+                domestic_flight_segments * PERSONAL_DOMESTIC_FLIGHT_TONNES
+            ),
+            "International flights": (
+                international_flight_segments * PERSONAL_INTERNATIONAL_FLIGHT_TONNES
+            ),
+        }
         food = DIET_FOOTPRINTS[diet]
+        input_totals["Food pattern (estimate)"] = food
         category_totals = {
-            "Travel": travel,
-            "Home energy": home,
-            "Flights": flights,
+            "Travel": sum(
+                input_totals[name]
+                for name in ("Petrol", "Diesel", "CNG", "Public transport")
+            ),
+            "Home energy": input_totals["Household electricity"] + input_totals["LPG"],
+            "Flights": input_totals["Domestic flights"] + input_totals["International flights"],
             "Food": food,
         }
         st.session_state.personal_result = {
             "total": sum(category_totals.values()),
             "categories": category_totals,
+            "inputs": input_totals,
             "diet": diet,
         }
 
@@ -934,21 +1054,27 @@ elif st.session_state.page == "personal":
         else:
             st.info("Your entered activities total zero. Add your annual activity to see your largest area.")
 
-        breakdown = pd.DataFrame(
-            {
-                "Area": list(category_totals),
-                "Estimated annual emissions (t CO2e)": list(category_totals.values()),
-            }
-        ).sort_values("Estimated annual emissions (t CO2e)", ascending=False)
-        st.bar_chart(
-            breakdown,
-            x="Area",
-            y="Estimated annual emissions (t CO2e)",
-            x_label="Personal emissions area",
-            y_label="Estimated tonnes CO2e per year",
-            horizontal=True,
-            alt=f"Personal annual emissions by activity area, with {largest_area} the largest at {largest_value:.2f} tonnes CO2e",
-        )
+        chart_column, breakdown_column = st.columns(2, gap="large")
+        with chart_column:
+            render_contribution_chart(
+                tuple(result.get("inputs", category_totals).items())
+            )
+        with breakdown_column:
+            breakdown = pd.DataFrame(
+                {
+                    "Area": list(category_totals),
+                    "Estimated annual emissions (t CO2e)": list(category_totals.values()),
+                }
+            ).sort_values("Estimated annual emissions (t CO2e)", ascending=False)
+            st.bar_chart(
+                breakdown,
+                x="Area",
+                y="Estimated annual emissions (t CO2e)",
+                x_label="Personal emissions area",
+                y_label="Estimated tonnes CO2e per year",
+                horizontal=True,
+                alt=f"Personal annual emissions by activity area, with {largest_area} the largest at {largest_value:.2f} tonnes CO2e",
+            )
 
         reduction_ideas = {
             "Travel": (
@@ -1006,6 +1132,12 @@ elif st.session_state.page == "calculator_options":
             "industry_choice",
             "industry_option",
         ),
+        "agriculture": (
+            "Choose an agriculture sector",
+            "Select a farm sector to open its dedicated emissions calculator.",
+            "agriculture_choice",
+            "agriculture_option",
+        ),
         "ammonia": (
             "Choose a hydrogen pathway",
             "Select the route used to supply hydrogen to the ammonia plant.",
@@ -1050,8 +1182,9 @@ elif st.session_state.page == "calculator":
             r" + (\text{fuel GJ} \times \text{fuel factor}) + \text{process CO2e}"
         )
         st.caption(
-            "The activity labels change by industry. Enter local emissions factors where "
-            "available; defaults are illustrative and should not be used for formal reporting."
+            "The calculator uses built-in screening factors: electricity 0.40 t CO2e/MWh "
+            "and fuel 0.0561 t CO2e/GJ. Enter annual activity amounts; factors are kept "
+            "out of the form to make it easier to use."
         )
         with st.form("industry_form"):
             production = st.number_input(
@@ -1068,28 +1201,12 @@ elif st.session_state.page == "calculator":
                 step=50.0,
                 key="industry_electricity",
             )
-            grid_factor = st.number_input(
-                "Grid emissions factor (tonnes CO2e per MWh)",
-                min_value=0.0,
-                value=GRID_TCO2_PER_MWH,
-                step=0.05,
-                format="%.3f",
-                key="industry_grid_factor",
-            )
             fuel = st.number_input(
                 industry_data["fuel_label"],
                 min_value=0.0,
                 value=5000.0,
                 step=500.0,
                 key="industry_fuel",
-            )
-            fuel_factor = st.number_input(
-                "Fuel emissions factor (tonnes CO2e per GJ)",
-                min_value=0.0,
-                value=FUEL_TCO2_PER_GJ,
-                step=0.005,
-                format="%.4f",
-                key="industry_fuel_factor",
             )
             process = st.number_input(
                 industry_data["process_label"],
@@ -1100,45 +1217,367 @@ elif st.session_state.page == "calculator":
             )
             submitted = st.form_submit_button("Calculate industry emissions", type="primary")
         if submitted:
-            total = electricity * grid_factor + fuel * fuel_factor + process
+            electricity_emissions = electricity * GRID_TCO2_PER_MWH
+            fuel_emissions = fuel * FUEL_TCO2_PER_GJ
+            total = electricity_emissions + fuel_emissions + process
             intensity = total / production
-            st.session_state.industry_result = (total, intensity, industry)
+            contributions = (
+                ("Purchased electricity", electricity_emissions),
+                ("Fuel", fuel_emissions),
+                ("Process emissions", process),
+            )
+            st.session_state.industry_result = (
+                total,
+                intensity,
+                industry,
+                contributions,
+                "fixed-factors-v1",
+            )
         if "industry_result" in st.session_state:
-            total, intensity, result_industry = st.session_state.industry_result
-            if result_industry == industry:
+            result = st.session_state.industry_result
+            if (
+                len(result) == 5
+                and result[2] == industry
+                and result[4] == "fixed-factors-v1"
+            ):
+                total, intensity, result_industry, contributions, _ = result
                 render_result(
                     total,
                     intensity,
                     industry_data["reference"],
                     industry_data["reference_unit"],
                     industry_data["suggestions"],
+                    contributions,
                 )
             else:
-                st.caption("Submit the form to calculate results for the newly selected industry.")
+                st.caption("Submit the form to refresh results and the input contribution chart.")
         st.caption(
             "Industry reference intensities are illustrative screening benchmarks, not official "
             "averages. They may not match your product mix, geography, or reporting boundary."
         )
 
-    else:
+    elif calculator == "agriculture":
         st.markdown('<div class="eyebrow">Sector calculator · 02</div>', unsafe_allow_html=True)
+        sector = st.session_state.agriculture_choice
+        st.title(f"{sector} emissions")
+        sector_details = {
+            "Crop farming": (
+                "Estimate fertilizer-related soil N2O, farm electricity, and diesel use. "
+                "Livestock, rice methane, land-use change, and fertilizer manufacturing are excluded.",
+                r"\text{Annual CO2e} = \frac{\text{N kg} \times \text{soil factor kg CO2e/kg N}}{1000}"
+                r" + (\text{electricity MWh} \times \text{grid factor t/MWh})"
+                r" + \frac{\text{diesel litres} \times \text{diesel factor kg CO2e/litre}}{1000}",
+            ),
+            "Rice cultivation": (
+                "Estimate methane from flooded rice fields alongside fertilizer, electricity, "
+                "and diesel emissions. Enter annual hectare-seasons; the calculator uses a "
+                "120-day flooded-season default.",
+                r"\text{Annual CO2e} = \text{area ha-season} \times "
+                r"\text{fixed rice methane factor t CO2e/ha-season}"
+                r" + \text{fertilizer, electricity, and diesel CO2e}",
+            ),
+            "Dairy & cattle": (
+                "Estimate herd methane from enteric fermentation and manure, plus farm electricity. "
+                "Results vary substantially by animal, feed, and manure management.",
+                r"\text{Annual CO2e} = \frac{\text{cattle} \times "
+                r"(\text{enteric CH4 + manure CH4 kg/head/year}) \times \text{GWP}}{1000}"
+                r" + \text{farm electricity CO2e}",
+            ),
+            "Poultry farming": (
+                "Estimate poultry farm energy use. Manure emissions are excluded because they "
+                "require flock and manure-management details.",
+                r"\text{Annual CO2e} = "
+                r"(\text{electricity MWh} \times \text{grid factor}) + \text{diesel CO2e}",
+            ),
+        }
+        description, formula = sector_details[sector]
+        st.write(description)
+        st.latex(formula)
+        if sector == "Crop farming":
+            st.caption(
+                "Built-in screening defaults: soil N2O 4.3 kg CO2e/kg nitrogen, electricity "
+                f"{GRID_TCO2_PER_MWH:.2f} t CO2e/MWh, diesel "
+                f"{AGRICULTURE_DIESEL_KG_PER_LITRE:.2f} kg CO2e/litre."
+            )
+        elif sector == "Rice cultivation":
+            st.caption(
+                f"Built-in screening defaults: methane {RICE_METHANE_KG_PER_HA_DAY:.2f} "
+                f"kg/ha/day for {RICE_FLOODED_DAYS_PER_SEASON} days, methane GWP100 "
+                f"{AGRICULTURE_METHANE_GWP100:.1f}, soil N2O 4.3 kg CO2e/kg nitrogen, "
+                f"electricity {GRID_TCO2_PER_MWH:.2f} t CO2e/MWh, diesel "
+                f"{AGRICULTURE_DIESEL_KG_PER_LITRE:.2f} kg CO2e/litre."
+            )
+        elif sector == "Dairy & cattle":
+            st.caption(
+                "Uses illustrative default factors of 60 kg enteric methane and 5 kg manure "
+                f"methane per animal-year, methane GWP100 {AGRICULTURE_METHANE_GWP100:.1f}, "
+                f"and electricity {GRID_TCO2_PER_MWH:.2f} t CO2e/MWh."
+            )
+        else:
+            st.caption(
+                f"Built-in energy defaults: electricity {GRID_TCO2_PER_MWH:.2f} t CO2e/MWh "
+                f"and diesel {AGRICULTURE_DIESEL_KG_PER_LITRE:.2f} kg CO2e/litre. "
+                "Manure emissions are excluded."
+            )
+        with st.form("agriculture_form"):
+            if sector == "Crop farming":
+                production = st.number_input(
+                    "Crop output (tonnes per year)",
+                    min_value=0.01,
+                    value=1000.0,
+                    step=100.0,
+                    key="agriculture_production",
+                )
+                nitrogen = st.number_input(
+                    "Nitrogen fertilizer applied (kg of nitrogen per year)",
+                    min_value=0.0,
+                    value=5000.0,
+                    step=250.0,
+                    key="agriculture_nitrogen",
+                )
+                electricity = st.number_input(
+                    "Farm electricity (MWh per year)",
+                    min_value=0.0,
+                    value=100.0,
+                    step=10.0,
+                    key="agriculture_electricity",
+                )
+                diesel = st.number_input(
+                    "Farm diesel use (litres per year)",
+                    min_value=0.0,
+                    value=1000.0,
+                    step=100.0,
+                    key="agriculture_diesel",
+                )
+                production_unit = "t crop"
+            elif sector == "Rice cultivation":
+                production = st.number_input(
+                    "Rice output (tonnes per year)",
+                    min_value=0.01,
+                    value=1000.0,
+                    step=100.0,
+                    key="rice_production",
+                )
+                area = st.number_input(
+                    "Rice area (hectare-seasons per year)",
+                    min_value=0.0,
+                    value=500.0,
+                    step=25.0,
+                    key="rice_area",
+                )
+                nitrogen = st.number_input(
+                    "Nitrogen fertilizer applied (kg of nitrogen per year)",
+                    min_value=0.0,
+                    value=5000.0,
+                    step=250.0,
+                    key="rice_nitrogen",
+                )
+                electricity = st.number_input(
+                    "Farm electricity (MWh per year)",
+                    min_value=0.0,
+                    value=100.0,
+                    step=10.0,
+                    key="rice_electricity",
+                )
+                diesel = st.number_input(
+                    "Farm diesel use (litres per year)",
+                    min_value=0.0,
+                    value=1000.0,
+                    step=100.0,
+                    key="rice_diesel",
+                )
+                production_unit = "t rice"
+            elif sector == "Dairy & cattle":
+                production = st.number_input(
+                    "Milk or livestock product output (tonnes per year)",
+                    min_value=0.01,
+                    value=500.0,
+                    step=50.0,
+                    key="cattle_production",
+                )
+                herd = st.number_input(
+                    "Average cattle herd size (animals)",
+                    min_value=0,
+                    value=100,
+                    step=10,
+                    key="cattle_herd",
+                )
+                electricity = st.number_input(
+                    "Farm electricity (MWh per year)",
+                    min_value=0.0,
+                    value=100.0,
+                    step=10.0,
+                    key="cattle_electricity",
+                )
+                production_unit = "t product"
+            else:
+                production = st.number_input(
+                    "Poultry meat or egg output (tonnes per year)",
+                    min_value=0.01,
+                    value=500.0,
+                    step=50.0,
+                    key="poultry_production",
+                )
+                electricity = st.number_input(
+                    "Farm electricity (MWh per year)",
+                    min_value=0.0,
+                    value=100.0,
+                    step=10.0,
+                    key="poultry_electricity",
+                )
+                diesel = st.number_input(
+                    "Farm diesel use (litres per year)",
+                    min_value=0.0,
+                    value=1000.0,
+                    step=100.0,
+                    key="poultry_diesel",
+                )
+                production_unit = "t poultry product"
+            submitted = st.form_submit_button(
+                f"Calculate {sector.lower()} emissions",
+                type="primary",
+            )
+        if submitted:
+            if sector == "Crop farming":
+                contributions = (
+                    (
+                        "Nitrogen fertilizer (direct soil N2O)",
+                        nitrogen * AGRICULTURE_SOIL_KG_PER_KG_N / 1000,
+                    ),
+                    ("Farm electricity", electricity * GRID_TCO2_PER_MWH),
+                    (
+                        "Farm diesel",
+                        diesel * AGRICULTURE_DIESEL_KG_PER_LITRE / 1000,
+                    ),
+                )
+            elif sector == "Rice cultivation":
+                contributions = (
+                    (
+                        "Rice-field methane",
+                        area
+                        * RICE_FLOODED_DAYS_PER_SEASON
+                        * RICE_METHANE_KG_PER_HA_DAY
+                        * AGRICULTURE_METHANE_GWP100
+                        / 1000,
+                    ),
+                    (
+                        "Nitrogen fertilizer (direct soil N2O)",
+                        nitrogen * AGRICULTURE_SOIL_KG_PER_KG_N / 1000,
+                    ),
+                    ("Farm electricity", electricity * GRID_TCO2_PER_MWH),
+                    (
+                        "Farm diesel",
+                        diesel * AGRICULTURE_DIESEL_KG_PER_LITRE / 1000,
+                    ),
+                )
+            elif sector == "Dairy & cattle":
+                contributions = (
+                    (
+                        "Enteric fermentation methane",
+                        herd
+                        * CATTLE_ENTERIC_METHANE_KG_PER_HEAD_YEAR
+                        * AGRICULTURE_METHANE_GWP100
+                        / 1000,
+                    ),
+                    (
+                        "Manure methane",
+                        herd
+                        * CATTLE_MANURE_METHANE_KG_PER_HEAD_YEAR
+                        * AGRICULTURE_METHANE_GWP100
+                        / 1000,
+                    ),
+                    ("Farm electricity", electricity * GRID_TCO2_PER_MWH),
+                )
+            else:
+                contributions = (
+                    ("Farm electricity", electricity * GRID_TCO2_PER_MWH),
+                    (
+                        "Farm diesel",
+                        diesel * AGRICULTURE_DIESEL_KG_PER_LITRE / 1000,
+                    ),
+                )
+            total = sum(value for _, value in contributions)
+            intensity = total / production
+            st.session_state.agriculture_result = (
+                total,
+                intensity,
+                sector,
+                production_unit,
+                contributions,
+                "fixed-factors-v1",
+            )
+        if "agriculture_result" in st.session_state:
+            result = st.session_state.agriculture_result
+            if (
+                len(result) == 6
+                and result[2] == sector
+                and result[5] == "fixed-factors-v1"
+            ):
+                total, intensity, _, result_unit, contributions, _ = result
+                if sector == "Crop farming":
+                    suggestions = (
+                        "Use soil testing and crop-specific nutrient plans to apply only the nitrogen needed.",
+                        "Improve irrigation and pump efficiency, and use renewable electricity where feasible.",
+                        "Reduce field passes, maintain farm equipment, and consider lower-carbon fuels.",
+                    )
+                elif sector == "Rice cultivation":
+                    suggestions = (
+                        "Use alternate wetting and drying where suitable to reduce methane from continuously flooded fields.",
+                        "Match nitrogen timing and amount to crop needs and avoid unnecessary fertilizer application.",
+                        "Improve pump efficiency and reduce diesel use for irrigation and field operations.",
+                    )
+                elif sector == "Dairy & cattle":
+                    suggestions = (
+                        "Improve animal health, feed quality, and productivity to reduce emissions per unit of milk or product.",
+                        "Capture or treat manure methane where practical, and manage manure to limit anaerobic storage.",
+                        "Use efficient equipment and lower-carbon electricity for milking, cooling, and water pumping.",
+                    )
+                else:
+                    suggestions = (
+                        "Keep litter dry, manage ventilation carefully, and avoid excess manure accumulation.",
+                        "Improve feed conversion, animal health, and housing efficiency to lower emissions per tonne of product.",
+                        "Use efficient ventilation, heating, and lighting equipment and reduce farm energy waste.",
+                    )
+                render_result(
+                    total,
+                    intensity,
+                    None,
+                    f"t CO2e / {result_unit}",
+                    suggestions,
+                    contributions,
+                )
+            else:
+                st.caption("Submit the form to refresh results and the input contribution chart.")
+        st.caption(
+            "Agriculture factors vary by crop, animal, climate, water and manure management, "
+            "and reporting boundary; use locally applicable factors where possible. Technical "
+            "emissions factors are built in rather than entered as form inputs. The crop soil "
+            "factor is a simplified direct N2O estimate, rice and cattle factors are screening "
+            "defaults, and poultry manure emissions are excluded. The IPCC guidance provides "
+            "methods but not one universal farm-sector average: "
+            "[IPCC 2019 Refinement, AFOLU](https://www.ipcc-nggip.iges.or.jp/public/2019rf/vol4.html)."
+        )
+
+    else:
+        st.markdown('<div class="eyebrow">Sector calculator · 03</div>', unsafe_allow_html=True)
         st.title("Ammonia plant emissions")
         route = st.session_state.ammonia_route
         st.write(
             "The Haber-Bosch process is the ammonia-synthesis step, not a separate plant "
-            "footprint. This calculator combines hydrogen pathway emissions with the "
-            f"ammonia plant's operations. Selected hydrogen pathway: **{route}**."
+            "footprint. This screening estimate combines the selected hydrogen pathway "
+            f"with purchased electricity. Selected pathway: **{route}**."
         )
         st.latex(
-            r"\text{Annual CO2e} = \text{NH3 tonnes} \times \left("
-            r"\frac{\text{H2 kg/t} \times \text{H2 factor kg CO2e/kg}}{1000}"
-            r" + \text{electricity MWh/t} \times \text{grid factor t/MWh}"
-            r" + \text{onsite fuel GJ/t} \times \text{fuel factor t/GJ}"
-            r" + \text{other direct CO2e/t}\right)"
+            r"\text{Annual CO2e} = "
+            r"\frac{\text{NH3 tonnes} \times 180\text{ kg H2/t} \times "
+            r"\text{pathway factor kg CO2e/kg H2}}{1000}"
+            r" + \text{electricity MWh} \times 0.40\text{ t CO2e/MWh}"
         )
         st.caption(
             f"The selected pathway starts with an illustrative factor of {HYDROGEN_FACTORS[route]:.1f} "
-            "kg CO2e/kg H2. It is editable below; replace it with a supplier-specific lifecycle factor when available."
+            "kg CO2e/kg H2. Hydrogen use is assumed to be 180 kg per tonne ammonia and the "
+            "grid factor 0.40 t CO2e/MWh. Onsite fuel and other direct process emissions are "
+            "not included; use a detailed plant inventory for full reporting."
         )
         with st.form("ammonia_form"):
             production = st.number_input(
@@ -1148,72 +1587,34 @@ elif st.session_state.page == "calculator":
                 step=100.0,
                 key="ammonia_production",
             )
-            hydrogen = st.number_input(
-                "Hydrogen used (kg per tonne of ammonia)",
-                min_value=0.0,
-                value=180.0,
-                step=5.0,
-                key="ammonia_hydrogen",
-            )
-            hydrogen_factor = st.number_input(
-                "Hydrogen pathway factor (kg CO2e per kg H2)",
-                min_value=0.0,
-                value=HYDROGEN_FACTORS[route],
-                step=0.5,
-                format="%.2f",
-                key=f"ammonia_hydrogen_factor_{route}",
-            )
             electricity = st.number_input(
-                "Purchased electricity (MWh per tonne ammonia)",
+                "Purchased electricity (MWh per year)",
                 min_value=0.0,
-                value=0.9,
-                step=0.1,
+                value=900.0,
+                step=100.0,
                 key="ammonia_electricity",
-            )
-            grid_factor = st.number_input(
-                "Electricity factor (t CO2e per MWh)",
-                min_value=0.0,
-                value=GRID_TCO2_PER_MWH,
-                step=0.05,
-                format="%.3f",
-                key="ammonia_grid_factor",
-            )
-            onsite_fuel = st.number_input(
-                "Onsite fuel used by the ammonia plant (GJ per tonne ammonia)",
-                min_value=0.0,
-                value=0.0,
-                step=0.5,
-                key="ammonia_onsite_fuel",
-            )
-            fuel_factor = st.number_input(
-                "Onsite fuel emissions factor (t CO2e per GJ)",
-                min_value=0.0,
-                value=FUEL_TCO2_PER_GJ,
-                step=0.005,
-                format="%.4f",
-                key="ammonia_fuel_factor",
-            )
-            process = st.number_input(
-                "Other direct process emissions (t CO2e per tonne ammonia)",
-                min_value=0.0,
-                value=0.0,
-                step=0.05,
-                format="%.3f",
-                key="ammonia_process",
             )
             submitted = st.form_submit_button("Calculate ammonia plant emissions", type="primary")
         if submitted:
-            intensity = (
-                hydrogen * hydrogen_factor / 1000
-                + electricity * grid_factor
-                + onsite_fuel * fuel_factor
-                + process
+            pathway_emissions = production * 180 * HYDROGEN_FACTORS[route] / 1000
+            electricity_emissions = electricity * GRID_TCO2_PER_MWH
+            total = pathway_emissions + electricity_emissions
+            intensity = total / production
+            contributions = (
+                ("Hydrogen pathway", pathway_emissions),
+                ("Purchased electricity", electricity_emissions),
             )
-            total = production * intensity
-            st.session_state.ammonia_result = (total, intensity, route)
+            st.session_state.ammonia_result = (
+                total,
+                intensity,
+                route,
+                contributions,
+                "simple-boundary-v1",
+            )
         if "ammonia_result" in st.session_state:
-            total, intensity, result_route = st.session_state.ammonia_result
-            if result_route == route:
+            result = st.session_state.ammonia_result
+            if len(result) == 5 and result[2] == route and result[4] == "simple-boundary-v1":
+                total, intensity, result_route, contributions, _ = result
                 render_result(
                     total,
                     intensity,
@@ -1224,14 +1625,15 @@ elif st.session_state.page == "calculator":
                         "Improve heat integration and replace onsite fossil fuel with low-carbon heat.",
                         "Reduce electricity use and procure lower-carbon power; verify supplier-specific factors.",
                     ),
+                    contributions,
                 )
             else:
-                st.caption("Submit the form to calculate results for the newly selected hydrogen pathway.")
+                st.caption("Submit the form to refresh results and the input contribution chart.")
         st.caption(
             "The 2.4 t CO2e/t ammonia reference is an indicative screening benchmark, not an official average. "
             "The selected hydrogen factor includes its pathway emissions; do not enter those same emissions "
-            "again as onsite fuel or other direct emissions. Enter onsite fuel only for the ammonia plant, "
-            "excluding hydrogen production. Use plant-specific lifecycle and location-based data for reporting."
+            "again in another calculator. This quick estimate excludes onsite fuel and other direct "
+            "process emissions. Use plant-specific lifecycle and location-based data for full reporting."
         )
 
 st.markdown(
